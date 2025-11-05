@@ -7,172 +7,530 @@ using Severus.Comodo.Statistics
 using Severus.FEBio
 using Severus.FEBio.XML
 using Severus.Printf 
+using FileIO
 
+GLMakie.closeall()
 
-#Full leg 
-Z_cut_offset_top = 200.0
-Z_cut_offset_bottom = 250.0
+# Control parameters 
+testCase = 2
+if testCase == 1
+    pathInputGeom = joinpath(severusdir(),"assets","stl")
+    fileName_set = ("FMA7163_right_leg_isolated_remesh_25k.stl", # Skin
+    "FMA24474.stl", # Right femur
+    "FMA24486.stl", # Right patella
+    "FMA24477.stl", # Right tibia
+    "FMA24480.stl") # Right fibula
+elseif testCase == 2
+    pathInputGeom = joinpath(severusdir(),"assets","stl","VHF")
+    fileName_set = ("VHF_right_skin_leg_5p0_mm.obj", # Skin
+    "VHF_right_femur.obj", # Right femur
+    "VHF_right_patella.obj", # Right patella
+    "VHF_right_tibia.obj", # Right tibia
+    "VHF_right_fibula.obj") # Right fibula
+end
 
-pointSpacing = 5.0 
-pathInputGeom = joinpath(severusdir(),"assets","stl")
-
-fileName_set = ("FMA7163_right_leg_isolated_remesh_25k.stl", # Skin
-"FMA24474.stl", # Right femur
-"FMA24486.stl", # Right patella
-"FMA24477.stl", # Right tibia
-"FMA24480.stl") # Right fibula
-nameSet = ("skin","femur","patella","tibia","fibula")
+nameSet = ["skin","femur","patella","tibia","fibula"]
 indSkin = 1
 indFemur = 2
 indPatella = 3
 indTibia = 4
 indFibula = 5
 
-nameSetCut_top = ("skin","femur")
-# nameSetCut_bottom = ("skin","femur","tibia","fibula")
+pointSpacing = 7.0 
 
-n = normalizevector(Vec{3, Float64}(0.0,0.0,1.0))# Cutting plane normal
-snapTolerance = 1e-6
+# Cutting parameters for full leg (used for shrinkage simulation)
+Z_cut_offset_top = 200.0
+Z_cut_offset_bottom = 250.0
+
+
+Z_cut_offset_skin = 127
+Z_cut_level_tibia = 150.0 #surgical standards
+Z_cut_level_fibula = Z_cut_level_tibia -10 #surgical standards
+
+Z_taper_offset_top = 30.0
+Z_taper_offset_bottom = Z_cut_offset_skin+15
+
+Z_thickness_distal = 30
+
+numPointBezier = 250
+v1_bezier_distal = 75.0
+v2_bezier_distal = 75.0
+
+# Material parameters and bc's for shrinkage
+κ = 1.0
+ratio = 100.0 #ratio = κ/μ
+J_desired = 0.2# 1/(2^2)
+exe_path ="febio4"
+
+nCut = normalizevector(Vec{3, Float64}(0.0, 0.0, 1.0)) # Cutting plane normal
 
 # importing the geometry form the folder 
 FF, VV = importGeometry(pathInputGeom, fileName_set; pointSpacing = pointSpacing)
+VV[5] .-= Point{3,Float64}(1.0, 0.0, 1.0) # shif fibula 
+
 FF_ori = deepcopy(FF)
 VV_ori = deepcopy(VV)
 
-# Cutting surfaces 
-# the reference point is at patella 
-#top surface cut it, ssnap it to the top, ggremeh it
+
+# Visualisation of surface 
+cMap_alpha = cgrad(:viridis, length(FF), categorical = true, alpha=0.2)
+cMap = cgrad(:viridis, length(FF), categorical = true, alpha=1.0)
+fig = Figure(size=(800,800))
+ax1 = AxisGeom(fig[1, 1], title = "Surface meshes")
+# hp1 = meshplot!(ax1, Fw, Vw; color=RGBAf(0.95,0.95,0.95,0.5), transparency=true, strokewidth=0.0)
+
+for i in eachindex(FF)
+    if i==1
+        hp1 = meshplot!(ax1, FF[i], VV[i]; color=cMap_alpha[i], strokewidth=0.0, transparency = true)            
+    else
+        hp1 = meshplot!(ax1, FF[i], VV[i]; color=cMap[i], strokewidth=0.0, transparency = false)            
+    end    
+end
+
+display(GLMakie.Screen(),fig)
+
+# -------------- Cutting surfaces 
+# The reference point for cutting is the centre of the patella. The top surface 
+# is cut, snapped to the cut level, and ggremesh is used for remeshing. 
 v_mid_patella = mean(VV[indPatella])
 zCut_level_top = v_mid_patella[3]+Z_cut_offset_top
 zCut_level_bottom = v_mid_patella[3]-Z_cut_offset_bottom
+Z_taper_start = v_mid_patella[3] + Z_taper_offset_top
+Z_taper_end = v_mid_patella[3] - Z_taper_offset_bottom
+Z_cut_level_skin = v_mid_patella[3] - Z_cut_offset_skin
 
-cutEnds!(FF, VV, [zCut_level_top, zCut_level_bottom],n;snapTolerance,pointSpacing)
-#generating the top and bottom boundary 
+cutEnds!(FF, VV, [zCut_level_top, zCut_level_bottom], nCut; snapTolerance=1e-6, pointSpacing=pointSpacing)
+
+# Closing over the top and bottom
 bone_set_bound = ("femur","tibia","fibula") # bone set used for closing the top and bottom 
-# # obtain the boundary sets of tibia, fibula 
-    # # ## Visualization
-Ft,Vt,Ft_b,Vt_b = close_top_bottom(FF,VV,nameSet,bone_set_bound;pointSpacing=pointSpacing)
-# # #Tetgen 
-# # #tetgen only for bones 
+Ft,Vt,Ft_b,Vt_b = close_top_bottom(FF,VV,nameSet,bone_set_bound; pointSpacing=pointSpacing)
 
-stringOpt = "paAqY"
-
-region_vol = [] #the interior volume for the residum 
-V_regions = [] #interior points inside for the geometry to be meshed 
-#instrior point inside the skin manually adjusted 
-indFace_skin = Int(round(length(FF[indSkin])*0.47))
-point_interior = faceinteriorpoint(FF[indSkin],VV[indSkin],indFace_skin ; w = 0.5)
-point_interior = Point{3,Float64}(point_interior[1],point_interior[2],point_interior[3]+22.0) 
-#ideal tet hed volume 
-vol_skin = 15.0*volume_tet_ideal(FF[indSkin],VV[indSkin])
-#interior points that need to be meshed 
-push!(V_regions,point_interior)
-push!(region_vol,vol_skin)
-#bone set is not meshed, they are empty regions in the mesh
-bone_set = ("femur","patella","tibia","fibula")
-for modelName in bone_set 
-    indexNow = findall(nameSet.==modelName)[1]
-    F = FF[indexNow]
-    V = VV[indexNow]
-    indFace = Int(round(length(F)/2))
-    interior_point =  faceinteriorpoint(F,V,indFace;w = 0.5 )   
-    vol = volume_tet_ideal(F,V)
-    push!(region_vol,vol)
-    push!(V_regions,interior_point)
-end  
-V_holes = V_regions[2:5]
-V_regions=V_regions[1]
-region_vol=region_vol[1]
-
-#the whole geometry is meshed
+# -------------- Tetrahedral meshing using tetgen 
+# Create combined and closed surface set
 Fw,Vw,Cw= joingeom(FF[indSkin],VV[indSkin],FF[indFemur],VV[indFemur],FF[indPatella],VV[indPatella],FF[indTibia],VV[indTibia],FF[indFibula],VV[indFibula],Ft,Vt,Ft_b,Vt_b)
-Fw,Vw = mergevertices(Fw,Vw)
-# # # #tetgen
-   
-E,V,CE,Fb,Cb= tetgenmesh(Fw,Vw; facetmarkerlist=Cw, V_regions=[V_regions], region_vol=[region_vol], V_holes = V_holes,  stringOpt)
-#atrophy part 
-κ = 1.0
-ratio = 100.0 #ratio = κ/μ
+Fw,Vw = mergevertices(Fw,Vw) # Merge nodes so they are new_shape_residum
 
-J_desired = 1/(2^2)
-exe_path ="C:/Program Files/FEBioStudio/bin/febio4"
-#######
-UT,VT,FF,VV,F_shrunk,V_shrunk,U_mag,U_vec = shrinky(exe_path,FF,VV,E,V,CE,Fb,Cb,κ,ratio,J_desired)
-# Visualization
+# Visualisation of surface 
+cMap_alpha = cgrad(:viridis, maximum(Cw), categorical = true, alpha=0.2)
+cMap = cgrad(:viridis, maximum(Cw), categorical = true, alpha=1.0)
 fig = Figure(size=(800,800))
+ax1 = AxisGeom(fig[1, 1], title = "Surface meshes")
+# hp1 = meshplot!(ax1, Fw, Vw; color=RGBAf(0.95,0.95,0.95,0.5), transparency=true, strokewidth=0.0)
 
-ax1 = LScene(fig[1,1])
-# hp3 = poly!(ax1,GeometryBasics.Mesh(VT[end],Fb[Cb.==1]), color=:white, shading = FastShading, transparency=false,strokecolor=:black,strokewidth=1)
-hp3 = poly!(ax1,GeometryBasics.Mesh(V_shrunk,F_shrunk), color=:white, shading = FastShading, transparency=false,strokecolor=:black,strokewidth=1)
+for c in 1:1:maximum(Cw)
+    if c==1
+        hp1 = meshplot!(ax1, Fw[Cw.==c], Vw; color=cMap_alpha[c], strokewidth=0.0, transparency = true)            
+    else
+        hp1 = meshplot!(ax1, Fw[Cw.==c], Vw; color=cMap[c], strokewidth=0.0, transparency = false)            
+    end    
+end
 
-# # normalplot(ax1,Ft,Vt)
+display(GLMakie.Screen(),fig)
+
+# Define hole and region point 
+V_hole = faceinteriorpoint(FF[indPatella],VV[indPatella],1;w = 0.5 ) # Patella forms a hole
+V_region = faceinteriorpoint(Fw,Vw,Int(round(length(FF[indSkin])/2)); w = 0.5 ) # This is a point inside the tissue to be meshed
+region_vol = 5.0*volume_tet_ideal(Fw,Vw) # Tetrahedral volume approximate in tissue away from boundary 
+
+# Visualisation of surface 
+fig = Figure(size=(800,800))
+ax1 = AxisGeom(fig[1, 1], title = "Limb surfaces meshes ready for Tetgen")
+hp1 = meshplot!(ax1, Fw, Vw; color=RGBAf(0.95,0.95,0.95,0.5), transparency=true, strokewidth=0.0)
+hp2 = scatter!(ax1, V_region, color=:red, markersize=15)
+Legend(fig[1,2], [hp1, hp2], ["Surface", "Interior point"])
+display(GLMakie.Screen(),fig)
+
+stringOpt = "paAqYQ"
+E, V, CE, Fb, Cb= tetgenmesh(Fw,Vw; facetmarkerlist=Cw, V_regions=[V_region], region_vol=[region_vol], V_holes = [V_hole],  stringOpt)
+
+# -------------- Use FEBio to simulate atrophy by reducing element volumes 
+UT,VT,FF,VV,F_shrunk,V_shrunk,U_mag,U_vec, JT_E, DD_J = shrinky(exe_path, FF, VV, E, V, CE, Fb, Cb, κ, ratio, J_desired)
+
+# Visualisation of FEBio shrinking results 
+numInc = length(UT)
+incRange = 0:1:numInc-1
+stepStart = 0#incRange[end]
+
+J_mean = mean(JT_E[stepStart+1])
+VE = simplexcenter(E,V)
+B = [v[1]>-90.0 for v in VE]
+
+F = element2faces(E[B])
+# indB = boundaryfaceindices(F)
+J_F = repeat(JT_E[stepStart+1][B], inner=4)
+# Fb = F[indB]
+
+Fs,Vs = separate_vertices(F,VT[stepStart+1])
+J_Vs = simplex2vertexdata(Fs,J_F,Vs)
+
+vol0 = sum(tetvolume(E,VT[1]))
+
+fig = Figure(size=(800,800))
+ax = AxisGeom(fig[1, 1], title = "Step: $stepStart. J = " * @sprintf("%.3f", J_mean))
+hp = meshplot!(ax, Fs, Vs; strokewidth=0.0, color=J_Vs , colormap = :viridis, colorrange=(J_desired-1e-3,1.0))
+
+Colorbar(fig[1, 2], hp.plots[1], label = "Volume ratio []", ticks = J_desired:0.1:1.0, labelsize=35, ticklabelsize=25) 
+
+hSlider = Slider(fig[2, 1], range = incRange, startvalue = stepStart,linewidth=30)
+on(hSlider.value) do stepIndex         
+    J_F = repeat(JT_E[stepIndex+1][B], inner=4)
+    Fs, Vs = separate_vertices(F, VT[stepIndex+1])
+    J_Vs = simplex2vertexdata(Fs,J_F)
+
+    vol = sum(tetvolume(E,VT[stepIndex+1]))
+
+    hp[1] = GeometryBasics.Mesh(Vs, Fs)
+    hp.color = J_Vs    
+
+    J_tot = vol/vol0
+    # hp.color = UT_mag[stepIndex+1]
+    ax.title = "Step: $stepIndex. J = " * @sprintf("%.3f", J_tot)
+end
+
+screen = display(GLMakie.Screen(), fig)
+GLMakie.set_title!(screen, "FEBio example")
+
+# #### 
+# Fs, Vs = separate_vertices(Fb, VT[1])
+
+# fig = Figure(size=(800,800))
+# ax = AxisGeom(fig[1, 1], title = "Step: $stepStart. J = " * @sprintf("%.3f", J_mean))
+# hp = meshplot!(ax, Fs, Vs; strokewidth=0.0, color=:white)
+
+# hSlider = Slider(fig[2, 1], range = incRange, startvalue = stepStart,linewidth=30)
+# on(hSlider.value) do stepIndex         
+#     J_F = repeat(JT_E[stepIndex+1][B], inner=4)
+#     vol = sum(tetvolume(E,VT[stepIndex+1]))
+#     Fs, Vs = separate_vertices(Fb, VT[stepIndex+1])
+
+#     hp[1] = GeometryBasics.Mesh(Vs, Fs) 
+
+#     J_tot = vol/vol0
+#     # hp.color = UT_mag[stepIndex+1]
+#     ax.title = "Step: $stepIndex. J = " * @sprintf("%.3f", J_tot)
+# end
+
+# screen = display(GLMakie.Screen(), fig)
+# GLMakie.set_title!(screen, "FEBio example")
 
 
- ######################mapping the coordinates##############################
+# # fileName = "/home/kevin/DATA/Office/Presentations/CMBBE_2025/leg_contract_01.mp4"
+# # slider2anim(fig, hSlider, fileName; backforth=true, duration=4.0)
+
+xlim=(0,1.01)
+ylim=(0,50)
+fig = Figure(size=(800,800), fontsize = 25)
+ax = Axis(fig[1,1], xlabel="J", xticks = xlim[1]:0.1:xlim[2], yticks = ylim[1]:5:ylim[2], title="Desired J=$J_desired")
+nBins = 500
+hist!(ax, JT_E[end], bins = nBins, color = :values, strokewidth = 0.0, strokecolor = :black, normalization = :pdf)
+lines!(ax, [Point{2,Float64}(J_desired,ylim[1]), Point{2,Float64}(J_desired, ylim[2])], color=:red, linewidth=2, linestyle=:dash)
+xlims!(ax, xlim[1], xlim[2])
+ylims!(ax, ylim[1], ylim[2])
+screen = display(GLMakie.Screen(), fig)
+GLMakie.set_title!(screen, "Histogram")
+
+# -------------- Mapping the coordinates
+# Get skin 
 V_skin = VV[indSkin]
 F_skin = FF[indSkin]
-#actual cut of the limb can be user generated 
-Z_taper_start = v_mid_patella[3]
-Z_taper_end = v_mid_patella[3]-127.0 
-#normalizing in the z direction returning the D and the correspoinding indices 
-D,ind = mapfunction_D(V_skin,Z_taper_start,Z_taper_end)
-D_map = D[ind]
-#control points 
-T_bez_in = [0.0, 0.25, 0.25, 1.0]
-T_bez_map_in = [0.0, 0.0, 0.25, 1.0]
-#less than linear
-#  T_bez_in = [0.0, 0.1, 0.1, 1.0]
-#  T_bez_map_in = [0.0, 0.0, 0.75, 1.0]
-#correspoinding spline 
-T_bez, T_map_bez = bezierMap(T_bez_in,T_bez_map_in; n=200)
-#mapping it to the skin 
-D_map = map_D(T_bez, T_map_bez, D_map; spline_order=4)
-Fs,Vs = new_shape_residum(V_skin,F_skin,D_map,ind,U_vec,v_mid_patella)
 
-# # normalplot(ax1,Ft,Vt)
- display(GLMakie.Screen(),fig)
 #cut bones tibia and fibula 
 #cut bones
-Z_cut_level_tibia = 150.0 #surgical standards
-Z_cut_level_fibula = Z_cut_level_tibia -10 #surgical standards
+
 nameSetCut_down = ("tibia","fibula")
 Z_cut_offset_down =[Z_cut_level_tibia,Z_cut_level_fibula] 
-output_type=:above
-FF,VV = cut_bones(FF,VV,nameSet,nameSetCut_down,Z_cut_offset_down,v_mid_patella,n;output_type,snapTolerance)
-#bezeir close for bones 
+FF,VV = cut_bones(FF,VV,nameSet,nameSetCut_down,Z_cut_offset_down,v_mid_patella,nCut; output_type=:above, snapTolerance=1e-6)
+
+# Using Bezier splines to close cut bones 
 bezier_bones = ("tibia", "fibula")
 velocity = ((25,20),(25,20))
 z_distance = [nothing, nothing]
+
 # boundary_curve = [indCurve_tibia,indCurve_fibula]
-numPointBezier = 250
 indCurve_tibia,_ = getboundaryset(FF[indTibia],VV[indTibia])
+F_tibia = FF[indTibia]
+V_tibia = VV[indTibia]
 v_mid_low_tibia = mean(V_tibia[indCurve_tibia[1]])
 v_mid_low_tibia = mean(V_tibia[indCurve_tibia[1]])
 
-FF,VV = close_bones_bezier(FF,VV,nameSet,bezier_bones,velocity,z_distance;numPointBezier,pointSpacing)
+FF,VV = close_bones_bezier(FF,VV,nameSet,bezier_bones,velocity,z_distance, pointSpacing; numPointBezier=numPointBezier)
 
-#close residum skin
-boundary_set_s1,_ = getboundaryset(Fs,Vs)
-# indCurve_tibia,_ = getboundaryset(FF[indTibia],VV[indTibia])
-# V_tibia=VV[indTibia]
 
-numPointBezier = 250
-Z_thickness_distal = 30
-p_distal = Point{3,Float64}(v_mid_low_tibia[1],v_mid_low_tibia[2],v_mid_low_tibia[3]-Z_thickness_distal)
-Fs2,Vs2 = bezierclose(Fs,Vs,150,75,boundary_set_s1[2]; numPointBezier = numPointBezier,p_distal=p_distal, numEdgeSmoothSteps = 25, λ = 0.5, pointSpacing=pointSpacing)
-V_bez = Vs2
-F_bez = Fs2
+# Normalising in the z direction returning the D and the corresponding indices 
+D_lin = mapfunction_D(V_skin,Z_taper_start,Z_taper_end) # "x" parameter for parameterisation of "taper"
 
-#visualization
-fig = Figure(size=(800,800))
-# ax1 = LScene(fig[1,1])
-ax1 = Axis3(fig[1, 1], clip =false, viewmode = :free, aspect = :data, xlabel = "X", ylabel = "Y", zlabel = "Z", title = "Test")
+# Control points 
+# T_bez_in = [0.0, 0.25, 0.25, 1.0]
+# T_bez_map_in = [0.0, 0.0, 0.25, 1.0]
 
-for i in 2:1:length(fileName_set)
-    hp1 = poly!(ax1,GeometryBasics.Mesh(VV[i],FF[i]), color=:white, shading = FastShading, transparency=false,strokecolor=:black,strokewidth=1)
+T_bez_in = [0.0, 0.25, 0.25, 1.0]
+T_bez_map_in = [0.0, 0.0, 0.25, 1.0]
+T_bez, T_map_bez = bezierMap(T_bez_in,T_bez_map_in; n=200)
+
+function mapskin(Tx, Ty, Tx_skin, U_vec, v1,v2, v_mid_low_tibia, Z_cut_level_skin; numPointBezier = 250, Z_thickness_distal=30, remesh=false)
+    A_map = map_D(Tx, Ty, Tx_skin; spline_order=4)
+    Fs,Vs = new_shape_residuum(V_skin, F_skin, A_map, U_vec, v_mid_patella, Z_cut_level_skin)
+
+    # Close residuum skin
+    boundary_set_s1,_ = getboundaryset(Fs,Vs)
+    p_distal = Point{3,Float64}(v_mid_low_tibia[1],v_mid_low_tibia[2],v_mid_low_tibia[3]-Z_thickness_distal)
+
+    zMax = maximum([v[3] for v in Vs])
+    Fs2,Vs2 = bezierclose(Fs,Vs,v1,v2,boundary_set_s1[2]; numPointBezier = numPointBezier,p_distal=p_distal, numEdgeSmoothSteps = 25, λ = 0.5, pointSpacing=pointSpacing, remesh=remesh)
+    edgeSet = boundaryedges(Fs2)
+    indicesCurve = edges2curve(edgeSet; remove_last = true)
+    for i in indicesCurve
+        Vs2[i] = Point{3,Float64}(Vs2[i][1],Vs2[i][2],zMax)
+    end        
+    return Fs2, Vs2
 end
-#  hp4 = poly!(ax1,GeometryBasics.Mesh(Vs,Fs), color=:white, shading = FastShading, transparency=true)
-hp3 = poly!(ax1,GeometryBasics.Mesh(V_bez,F_bez), color=:white, shading = FastShading, transparency=false,strokecolor=:black,strokewidth=1)
 
-# hp3 = poly!(ax1,GeometryBasics.Mesh(V_shrunk,F_shrunk), color=:blue, shading = FastShading, transparency=true)
- display(GLMakie.Screen(),fig)
+function par2shape(r1, a1, r2, a2, v1, v2, h2, D_lin, U_vec, Z_thickness_distal, Z_cut_level_skin; remesh=false)
+    Tx_bez_in     = [0.0, r1*cosd(a1), 1.0 + r2*cosd(a2), 1.0]
+    Ty_bez_in = [0.0, r1*sind(a1), h2 + r2*sind(a2), h2]
+    Tx_bez, Ty_bez = bezierMap(Tx_bez_in, Ty_bez_in; n=200)
+    F_bez, V_bez = mapskin(Tx_bez, Ty_bez, D_lin, U_vec, v1, v2, v_mid_low_tibia, Z_cut_level_skin; numPointBezier = numPointBezier, Z_thickness_distal = Z_thickness_distal, remesh=remesh)
+    return F_bez, V_bez, Tx_bez_in, Ty_bez_in, Tx_bez, Ty_bez
+end
+
+r1 = 0.25
+a1 = 0.0
+r2 = 0.25
+a2 = 225.0-45
+v1 = 75.0
+v2 = 75.0
+h2 = 1.0
+F_bez, V_bez, Tx_bez_in, Ty_bez_in, Tx_bez, Ty_bez = par2shape(r1, a1, r2, a2, v1, v2, h2, D_lin, U_vec, Z_thickness_distal, Z_cut_level_skin; remesh=true)
+
+# Visualisation
+numSliderSteps = 200 
+
+fig = Figure(size=(800,800), fontsize = 25)
+ax1 = Axis(fig[1, 1], aspect = DataAspect(), limits=(0,1,0,1))
+# scatter!(ax1, T_bez_in, T_bez_map_in, color=:black, markersize=25)
+lines!(ax1, [0.0, 1.0], [0.0, 1.0], color=:gray, linewidth=2, linestyle=:dash)
+hl = lines!(ax1, Tx_bez, Ty_bez, color=:black, linewidth=4)
+
+ax2 = AxisGeom(fig[1,2], title = "New skin shape")
+hp1 = meshplot!(ax2, F_bez, V_bez; strokewidth=0.0, color=Makie.Colors.RGBA{Float64}(1.0,1.0,1.0,0.25), transparency=true)
+for i in 2:1:length(FF)
+    hp = meshplot!(ax2, FF[i], VV[i]; color=:white, strokewidth=0.0, transparency = false)            
+end
+
+function sliderUpdate(hp1, hl, hSlider1, hSlider2, hSlider3, hSlider4, hSlider5, hSlider6, hSlider7)
+    r1 = hSlider1.value[]; a1 = hSlider2.value[]
+    r2 = hSlider3.value[]; a2 = hSlider4.value[]
+    v1 = hSlider5.value[]; v2 = hSlider6.value[]
+    h2 = hSlider7.value[]
+    F_bez, V_bez, Tx_bez_in, Ty_bez_in, Tx_bez, Ty_bez = par2shape(r1, a1, r2, a2, v1, v2, h2, D_lin, U_vec, Z_thickness_distal, Z_cut_level_skin)
+
+    hp1[1] = GeometryBasics.Mesh(V_bez,F_bez)    
+    hl[1] = Tx_bez
+    hl[2] = Ty_bez
+end
+
+Label(fig[2,:][1, 1], "r1")
+stepRange = range(0.0,2.0,numSliderSteps)
+hSlider1 = Slider(fig[2,:][1, 2], range = stepRange, startvalue = r1,linewidth=10)
+on(hSlider1.value) do r1 
+    sliderUpdate(hp1, hl, hSlider1, hSlider2, hSlider3, hSlider4, hSlider5, hSlider6, hSlider7)
+end
+
+Label(fig[3,:][1, 1], "a1")
+stepRange = range(0.0, 90.0, numSliderSteps)
+hSlider2 = Slider(fig[3, :][1,2], range = stepRange, startvalue = a1,linewidth=10)
+on(hSlider2.value) do a1 
+    sliderUpdate(hp1, hl, hSlider1, hSlider2, hSlider3, hSlider4, hSlider5, hSlider6, hSlider7)
+end
+
+Label(fig[4,:][1, 1], "r2")
+stepRange = range(0.0,2.0,numSliderSteps)
+hSlider3 = Slider(fig[4, :][1,2], range = stepRange, startvalue = r2,linewidth=10)
+on(hSlider3.value) do r2 
+    sliderUpdate(hp1, hl, hSlider1, hSlider2, hSlider3, hSlider4, hSlider5, hSlider6, hSlider7)
+end
+
+Label(fig[5,:][1, 1], "a2")
+stepRange = range(90,270,numSliderSteps)
+hSlider4 = Slider(fig[5, :][1,2], range = stepRange, startvalue = a2,linewidth=10)
+on(hSlider4.value) do a2 
+    sliderUpdate(hp1, hl, hSlider1, hSlider2, hSlider3, hSlider4, hSlider5, hSlider6, hSlider7)
+end
+
+Label(fig[6,:][1, 1], "v1")
+stepRange = range(25,200,numSliderSteps)
+hSlider5 = Slider(fig[6, :][1, 2], range = stepRange, startvalue = v1,linewidth=10)
+on(hSlider5.value) do v1 
+    sliderUpdate(hp1, hl, hSlider1, hSlider2, hSlider3, hSlider4, hSlider5, hSlider6, hSlider7)
+end
+
+Label(fig[7,:][1, 1], "v2")
+stepRange = range(25,200,numSliderSteps)
+hSlider6 = Slider(fig[7, :][1,2], range = stepRange, startvalue = v2,linewidth=10)
+on(hSlider6.value) do v2
+    sliderUpdate(hp1, hl, hSlider1, hSlider2, hSlider3, hSlider4, hSlider5, hSlider6, hSlider7)
+end
+
+Label(fig[8,:][1, 1], "h2")
+stepRange = range(1.0,0.0,numSliderSteps)
+hSlider7 = Slider(fig[8, :][1,2], range = stepRange, startvalue = h2,linewidth=10)
+on(hSlider7.value) do v2
+    sliderUpdate(hp1, hl, hSlider1, hSlider2, hSlider3, hSlider4, hSlider5, hSlider6, hSlider7)
+end
+
+display(GLMakie.Screen(),fig)
+
+
+# # Visualisation
+# fig = Figure(size=(800,800))
+# ax1 = AxisGeom(fig[1,1], title = "New skin shape")
+# hp3 = meshplot!(ax1,Fs, Vs)
+# # normalplot(ax1, Fs, Vs)
+# display(GLMakie.Screen(),fig)
+
+
+
+# edgesTop = boundaryedges(F_bez)
+# indicesCurveTop = edges2curve(edgesTop; remove_last = true)
+# V_skin_top = V_bez[indicesCurveTop]
+
+# edgesTop = boundaryedges(FF[indFemur])
+# indicesCurveTop = edges2curve(edgesTop; remove_last = true)
+# V_femur_top = VV[indFemur][indicesCurveTop]
+
+# VT = (reverse(V_skin_top), reverse(V_femur_top)) # Boundary curves
+# R = ([1,2],) # Region definition (2 is hole inside of 1)
+# P = (pointSpacing, pointSpacing)  # Point spacings
+# F_top,V_top,_ = regiontrimesh(VT,R,P) # Create infill mesh 
+
+# # Visualisation
+# fig = Figure(size=(800,800))
+# ax1 = AxisGeom(fig[1, 1], title = "Residual limb skin surface")
+# hp1 = meshplot!(ax1, F_bez, V_bez; color=:white, strokewidth=0.5, transparency = false)            
+# display(GLMakie.Screen(),fig)
+
+
+# fig = Figure(size=(800,800))
+# ax1 = AxisGeom(fig[1, 1], title = "Residual limb bone surfaces")
+# H=[]
+# for i in 2:1:length(FF)-1
+#     hp1 = meshplot!(ax1, FF[i], VV[i]; color=:white, strokewidth=0.5, transparency = false)                    
+#     push!(H, hp1)
+# end
+# display(GLMakie.Screen(),fig)
+
+# # Replace skin in surface set 
+# FF[1] = F_bez
+# VV[1] = V_bez
+# push!(FF, F_top)
+# push!(VV, V_top)
+# push!(nameSet, "top")
+
+# # Visualisation
+# cMap_alpha = cgrad(:viridis, length(FF), categorical = true, alpha=0.2)
+# cMap = cgrad(:viridis, length(FF), categorical = true, alpha=1.0)
+
+# fig = Figure(size=(800,800))
+# ax1 = AxisGeom(fig[1, 1], title = "Joined set")
+
+# for i in eachindex(FF)
+#     if i==1
+#         hp1 = meshplot!(ax1, FF[i], VV[i]; color=cMap_alpha[i], strokewidth=0.0, transparency = true)            
+#     else
+#         hp1 = meshplot!(ax1, FF[i], VV[i]; color=cMap[i], strokewidth=0.0, transparency = false)            
+#     end    
+# end
+
+# fig = Figure(size=(800,800))
+# ax1 = AxisGeom(fig[1, 1], title = "Joined set")
+
+# for i in eachindex(FF)
+#     if i==1
+#         hp1 = meshplot!(ax1, FF[i], VV[i]; color=cMap_alpha[i], strokewidth=1.0, transparency = true)            
+#     else
+#         hp1 = meshplot!(ax1, FF[i], VV[i]; color=cMap[i], strokewidth=1.0, transparency = false)            
+#     end    
+# end
+
+# display(GLMakie.Screen(),fig)
+
+# # -------------- Tetrahedral meshing using tetgen 
+# # Create combined and closed surface set
+# Fw,Vw,Cw= joingeom(FF,VV)
+# Fw,Vw = mergevertices(Fw,Vw) # Merge nodes so they are new_shape_residum
+
+# # Define hole and region point 
+# V_hole_patella = faceinteriorpoint(FF[indPatella],VV[indPatella], 1; w = 0.5 )
+# V_hole_tibia = faceinteriorpoint(FF[indTibia],VV[indTibia], 1; w = 0.5 )
+# V_hole_fibula = faceinteriorpoint(FF[indFibula],VV[indFibula], 1; w = 0.5 )
+# V_holes = [V_hole_patella, V_hole_tibia, V_hole_fibula]
+# V_region = faceinteriorpoint(Fw,Vw,1; w = 0.5 ) # This is a point inside the tissue to be meshed
+# region_vol = 1.0*volume_tet_ideal(Fw,Vw) # Tetrahedral volume approximate in tissue away from boundary 
+
+# stringOpt = "paAqYQ"
+# E, V, CE, Fb, Cb= tetgenmesh(Fw,Vw; facetmarkerlist=Cw, V_regions=[V_region], region_vol=[region_vol], V_holes = V_holes,  stringOpt)
+
+# ## Visualization
+# CE = tetvolume(E,V)
+# # cmap = cgrad(:Spectral, categorical = true)
+# cmap = :Spectral
+
+# F = element2faces(E) # Triangular faces
+# CE_F = repeat(CE,inner=4)
+
+# Fbs,Vbs = separate_vertices(Fb,V)
+# Cbs_V = simplex2vertexdata(Fbs,Cb)
+
+# Fs,Vs = separate_vertices(F,V)
+# CE_Vs = simplex2vertexdata(Fs,CE_F)
+
+# strokewidth = 1 
+
+# fig = Figure(size=(800,800))
+
+# ax1 = AxisGeom(fig[1, 1], title = "Cut mesh")
+
+# for i in eachindex(FF)
+#     hp1 = meshplot!(ax1, FF[i], VV[i]; color=Makie.Colors.RGBA{Float64}(1.0,1.0,1.0,0.25), strokewidth=0.0, transparency = true)            
+# end
+
+# # hp2 = meshplot!(ax1, Fs, Vs, color=CE_Vs, strokewidth=strokewidth, colorrange = (0.0,maximum(CE)), colormap=cmap)
+# hp2 = meshplot!(ax1, Fs, Vs, color=:white, strokewidth=strokewidth)
+# # scatter!(ax1, V_region, color=:yellow, markersize=25)
+# VE  = simplexcenter(E,V)
+# ZE = [v[3] for v in VE]
+# Z = [v[3] for v in V]
+# zMax = maximum(Z)
+# zMin = minimum(Z)
+# numSlicerSteps = ceil(Int,(zMax-zMin)/mean(edgelengths(F,V)))
+
+# stepRange = range(zMin,zMax,numSlicerSteps)
+# hSlider = Slider(fig[2, 1], range = stepRange, startvalue = mean(stepRange),linewidth=30)
+
+# # Colorbar(fig[1, 2], hp2, label = "Tet. volume", labelsize=35, ticklabelsize=25) 
+
+# on(hSlider.value) do z 
+#     B = ZE .<= z
+#     indShow = findall(B)
+#     if isempty(indShow)
+#         hp2.visible=false        
+#     else        
+#         hp2.visible=true
+#         Fs = element2faces(E[indShow])
+#         Cs = repeat(CE[indShow],inner=4)
+        
+#         indB = boundaryfaceindices(Fs)        
+#         Fs = Fs[indB]
+#         Cs = Cs[indB]
+#         Fs,Vs = separate_vertices(Fs,V)
+#         CE_Vs = simplex2vertexdata(Fs,Cs)
+#         Ms = GeometryBasics.Mesh(Vs,Fs)
+#         hp2[1] = Ms
+#         # hp2.color = CE_Vs        
+#     end
+# end
+# # hSlider.selected_index[]+=1
+# slidercontrol(hSlider,ax1)
+
+# screen = display(GLMakie.Screen(), fig)
+# GLMakie.set_title!(screen, "Tetgen mesh")

@@ -10,7 +10,7 @@ using Printf
 ######
 # Set FEBio exec path or name
 # const FEBIO_EXEC = "febio4" # FEBio executable
- const FEBIO_EXEC = "C:/Program Files/FEBioStudio/bin/febio4" # Path to FEBio executable
+const FEBIO_EXEC = "febio4" # Path to FEBio executable
 
 ###### 
 # Control parameters 
@@ -139,20 +139,20 @@ Mesh_node = aen(febio_spec_node,"Mesh")
 # Nodes
 Nodes_node = aen(Mesh_node,"Nodes"; name="nodeSet_all")
     for (i,v) in enumerate(V)        
-        aen(Nodes_node,"node", join([@sprintf("%.16e",x) for x ∈ v],','); id = i)     
+        aen(Nodes_node,"node", join([@sprintf("%.16e",x) for x ∈ v],", "); id = i)     
     end
     
 # Elements
 Elements_node = aen(Mesh_node,"Elements"; name="Part1", type="tet4")
     for (i,e) in enumerate(E)        
-        aen(Elements_node,"elem",join(map(string, e), ','); id = i)
+        aen(Elements_node,"elem", join([@sprintf("%i",i) for i ∈ e], ", "); id = i)
     end
     
 # Node sets
 bcSupportList = "bcSupportList"
 bcSupportList_z = "bcSupportList_z"
-aen(Mesh_node,"NodeSet",join([@sprintf("%i",x) for x ∈ indNodesBones],','); name=bcSupportList)
-aen(Mesh_node,"NodeSet",join([@sprintf("%i",x) for x ∈ indNodesTop],','); name=bcSupportList_z)
+aen(Mesh_node,"NodeSet",join([@sprintf("%i",x) for x ∈ indNodesBones],", "); name=bcSupportList)
+aen(Mesh_node,"NodeSet",join([@sprintf("%i",x) for x ∈ indNodesTop],", "); name=bcSupportList_z)
 
 MeshDomains_node = aen(febio_spec_node, "MeshDomains")
     aen(MeshDomains_node,"SolidDomain"; mat = "Material1", name="Part1")

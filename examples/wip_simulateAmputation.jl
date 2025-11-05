@@ -136,7 +136,7 @@ Vs = smoothmesh_hc(Fs[logicSmooth],Vs, 50, 0.1, 0.5; constrained_points=constrai
 # FF[1] = Fs[logicSmooth]
 VV[1] = Vs
 
-NV = vertexnormal(Fs,Vs; weighting=:area) # May be inefficient to do this to all vertices (/faces)
+NV = vertexnormal(Fs,Vs; weighting=:size) # May be inefficient to do this to all vertices (/faces)
 NV_indCurve = NV[indCurve] # Vertex normals for the curve
 NE_indCurve = Vector{Point{3,Float64}}(undef,length(indCurve))
 NB_base = Vector{Point{3,Float64}}(undef,length(indCurve))

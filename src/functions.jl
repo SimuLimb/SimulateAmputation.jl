@@ -10,8 +10,8 @@ function severusdir()
 end
 
 function importGeometry(pathInputGeom, fileName_set; pointSpacing = nothing)
-    FF = []
-    VV = []
+    FF = Vector{Vector{TriangleFace{Int}}}()
+    VV = Vector{Vector{Point{3,Float64}}}()
     for i in 1:1:length(fileName_set)
         M = load(joinpath(pathInputGeom,fileName_set[i]))
         F = tofaces(faces(M))
@@ -97,7 +97,7 @@ end
 """
 Function for bezierclose
 """
-function bezierclose(Fs,Vs_new,v1,v2,indCurve ; numPointBezier = numPointBezier, p_distal = nothing, numEdgeSmoothSteps = 25, λ = 0.5, pointSpacing=nothing)
+function bezierclose(Fs, Vs_new, v1, v2, indCurve; numPointBezier = numPointBezier, p_distal = nothing, numEdgeSmoothSteps = 25, λ = 0.5, pointSpacing=nothing, remesh=true)
     
     if isnothing(pointSpacing)
         pointSpacing = mean(edgelengths(Fs,Vs_new))
@@ -126,47 +126,67 @@ function bezierclose(Fs,Vs_new,v1,v2,indCurve ; numPointBezier = numPointBezier,
         end
     end
 
-    VV_B = []
+    VV_B = Vector{Vector{Point{3,Float64}}}()
     Vb = Vector{Point{3,Float64}}()
-    #pdistal nothing
+    
     if isnothing(p_distal)     
         vz = [v[3] for v in Vs_new]
         len = abs(maximum(vz) - minimum(vz))
         v_low = mean(Vs_new[indCurve])
-        p_distal = Point{3,Float64}(v_low[1],v_low[2],v_low[3] -  len*0.03)
-        # p_distal = v_low .- len*0.1
+        p_distal = Point{3,Float64}(v_low[1], v_low[2], v_low[3] - len*0.03)        
     end
-     
+    
+    if !isa(v1, Vector)
+        v1 = fill(v1, length(indCurve))
+    end
+
+    if !isa(v2, Vector)
+        v2 = fill(v2, length(indCurve))
+    end
+
     for i in eachindex(indCurve)
         nBase = NB_base[i]
         nEnd = normalizevector(Point{3,Float64}(Vs_new[indCurve[i]][1]-p_distal[1],Vs_new[indCurve[i]][2]-p_distal[2],0.0))
-        pb = [Vs_new[indCurve[i]], Vs_new[indCurve[i]] + v1/3*nBase, p_distal + v2/3*nEnd,p_distal]
+
+        pb = [Vs_new[indCurve[i]], Vs_new[indCurve[i]] + v1[i]/3*nBase, p_distal + v2[i]/3*nEnd,p_distal]
         vb = nbezier(pb,numPointBezier)
         push!(VV_B,vb)
         append!(Vb,vb)
     end   
+
     Fb = grid2surf(Vb,length(indCurve);periodicity=(false,true),face_type=:quad)   
     Fbq = quad2tri(Fb,Vb)   
     F_n,V_n,_ = joingeom(Fs,Vs_new,Fbq,Vb)
     F_n,V_n,_ = mergevertices(F_n,V_n)
-    # Determine number of points to request to closely match desired point spacing
-    np = spacing2numvertices(F_n,V_n,pointSpacing) 
-    # Remesh with desired number of points 
-    Fn,Vn = ggremesh(F_n,V_n; nb_pts=np)
-    
-    return Fn,Vn
+
+    if remesh == true
+        # Determine number of points to request to closely match desired point spacing
+        np = spacing2numvertices(F_n,V_n,pointSpacing) 
+        # Remesh with desired number of points 
+        Fn,Vn = ggremesh(F_n,V_n; nb_pts=np)
+        return Fn,Vn
+    else
+        return F_n,V_n
+    end
 end 
 
-####bones bezeir closefunction close_bones_bezier(bezier_bones,velocity,z_distance;numPointBezier,pointSpacing)
-function close_bones_bezier(FF,VV,nameSet,bezier_bones,velocity,z_distance;numPointBezier,pointSpacing)
+####bones bezier close function 
+function close_bones_bezier(FF,VV,nameSet,bezier_bones,velocity,z_distance, pointSpacing; numPointBezier=numPointBezier)
     for model in eachindex(bezier_bones)
          modelName = bezier_bones[model]             
         indexNow = findall(nameSet .== modelName)[1]    
         v_vec = velocity[model]
         z_dist = z_distance[model]
         ind_curve,_= getboundaryset(FF[indexNow],VV[indexNow])
-        # println(indexNow)
+        
+        zMax = maximum([v[3] for v in VV[indexNow]])
         Fn,Vn = bezierclose(FF[indexNow],VV[indexNow],v_vec[1],v_vec[2],ind_curve[1]; numPointBezier = numPointBezier,p_distal=z_dist, numEdgeSmoothSteps = 25, λ = 0.5, pointSpacing=pointSpacing)
+        edgeSet = boundaryedges(Fn)
+        indicesCurve = edges2curve(edgeSet; remove_last = true)
+        for i in indicesCurve
+            Vn[i] = Point{3,Float64}(Vn[i][1],Vn[i][2],zMax)
+        end
+       
         FF[indexNow] = Fn
         VV[indexNow] = Vn    
     end 
@@ -200,21 +220,19 @@ function getboundaryset(F,V)
         ind = ind[1:end-1]  
         push!(boundary_set,ind)     
         z_level[g] = mean(z[ind])
-
     end
-    # _,indMax = findmax(z_level)
-    # if indMax==1
-    #     ind1 = edges2curve(Eb[Gb.==1])
-    #     ind1 = ind1[1:end-1]
-    #     ind2= edges2curve(Eb[Gb.==2])
-    #     ind2 = ind2[1:end-1]
-    # else
-    #     ind1 = edges2curve(Eb[Gb.==2])
-    #     ind1 = ind1[1:end-1]
-    #     ind2= edges2curve(Eb[Gb.==1])
-    #     ind2 = ind2[1:end-1]
-    # end
-    return boundary_set,z_level
+    indSort = sortperm(z_level, rev=true)
+    boundary_set = boundary_set[indSort]
+    z_level = z_level[indSort]
+
+    for (i,ind) in enumerate(boundary_set)
+        n = edgecrossproduct(V[ind])
+        if dot(n, Vec{3, Float64}(0.0, 0.0, 1.0))<0.0
+            boundary_set[i] = reverse(ind)
+        end
+    end
+
+    return boundary_set, z_level
 end
 
 function cutEnds!(FF, VV, zCut_levels,n;snapTolerance,pointSpacing)
@@ -267,7 +285,7 @@ end
 
 #
 function close_top_bottom(FF,VV,nameSet,bone_set;pointSpacing=pointSpacing)
- indCurve_boneset = []
+    indCurve_boneset = []
 
     for modelName in bone_set 
         indexNow = findall(nameSet.==modelName)[1]
@@ -276,16 +294,17 @@ function close_top_bottom(FF,VV,nameSet,bone_set;pointSpacing=pointSpacing)
         i_c,_ = getboundaryset(F,V)
         push!(indCurve_boneset,i_c[1])
     end 
-#Close top 
+
+    # Close top 
     F_skin = FF[findall(nameSet.=="skin")[1]]
     V_skin = VV[findall(nameSet.=="skin")[1]]
     V_femur = VV[findall(nameSet.=="femur")[1]]
     boundary_set_skin,_ = getboundaryset(F_skin,V_skin)
-    VT = (reverse(V_skin[boundary_set_skin[1]]),reverse(V_femur[indCurve_boneset[1]]),) # Curves
+    VT = (V_skin[boundary_set_skin[1]], V_femur[indCurve_boneset[1]]) # Curves
     R = ([1,2],) 
     P = (pointSpacing,pointSpacing)  # Point spacings
     Ft,Vt,_ = regiontrimesh(VT,R,P)
-#Close bottom   
+    # Close bottom   
     V_tibia =  VV[findall(nameSet.=="tibia")[1]]
     V_fibula =  VV[findall(nameSet.=="fibula")[1]]
     VT_b = (V_skin[boundary_set_skin[2]],V_tibia[indCurve_boneset[2]],V_fibula[indCurve_boneset[3]],) # Curves
@@ -305,20 +324,18 @@ function volume_tet_ideal(F,V)
 end 
 #mapping functions 
 function mapfunction_D(V_skin,Z_taper_start,Z_taper_end)
-    D= zeros(length(V_skin))
-    R = fill(Point{3, Float64}(0.0, 0.0, 0.0), length(V_skin))
-    ind = Vector{Int}()
-    for (i,v) in enumerate(V_skin)
-       
-        if v[3] <= Z_taper_start && v[3] >= Z_taper_end  
-            D[i] = ((Z_taper_start - v[3]) / (Z_taper_start-Z_taper_end))        
-            # R[i] =  U_vec[i] .* D[i]
-            push!(ind,i)
-        #   push!(R1,r)
+    w = Z_taper_start-Z_taper_end
+    D = zeros(length(V_skin))
+    for (i,v) in enumerate(V_skin)       
+        if v[3] <= Z_taper_start && v[3] >= Z_taper_end 
+            D[i] = (Z_taper_start - v[3]) / w
+        elseif v[3] < Z_taper_end         
+            D[i] = 1.0
         end
     end 
-    return D,ind 
+    return D 
 end 
+
 ### geting the spline points 
 function bezierMap(t,t_map; n=100)
     P = [Point{2, Float64}(t[i],t_map[i]) for i in eachindex(t)] # Define control points
@@ -332,21 +349,22 @@ function map_D(T,T_map, D; spline_order=4)
     S = BSplineKit.interpolate(T, T_map, BSplineOrder(spline_order)) # Create interpolator
     return S.(D)
 end
-#new shape 
-function new_shape_residum(V_skin,F_skin,D_map,ind,U_vec,v_mid_patella)
-    R = fill(Point{3, Float64}(0.0, 0.0, 0.0), length(V_skin))    
-    R[ind] =  U_vec[ind] .* D_map
-    Vs1 = deepcopy(V_skin)
-    Vs_new = [Point{3,Float64}(v[1]+r[1],v[2]+r[2],v[3]+r[3]) for (v,r) in zip(Vs1,R)]               
-    Z_level_cut = minimum([v[3] for v in Vs_new[ind]])
 
-    Fs1 = deepcopy(F_skin)
-    p = Point{3,Float64}(v_mid_patella[1],v_mid_patella[2],Z_level_cut+15) # Point on cutting plane 
+#new shape  
+function new_shape_residuum(V_skin,F_skin,D_map,U_vec, v_mid_patella, Z_level_cut)
+    V2 = deepcopy(V_skin)
+    for i in eachindex(V_skin)
+        V2[i] += Point{3,Float64}(U_vec[i] .* D_map[i])
+    end
+
+    F2 = deepcopy(F_skin)
+    
+    p = Point{3,Float64}(v_mid_patella[1],v_mid_patella[2], Z_level_cut) # Point on cutting plane 
     n = normalizevector(Vec{3, Float64}(0.0,0.0,1.0))# Cutting plane normal  
-    Fs,Vs,_ = trisurfslice(Fs1,Vs_new,n,p; output_type=:above, snapTolerance =  1e-6)     
-    boundary_set_s1,_ = getboundaryset(Fs,Vs)
-    set_z_level_boundary!(Fs,Vs,Z_level_cut+15; indCurve = boundary_set_s1[2])
-    return Fs,Vs
+    F2, V2,_ = trisurfslice(F2, V2, n, p; output_type=:above, snapTolerance =  1e-6)     
+    boundary_set_s1,_ = getboundaryset(F2,V2)
+    set_z_level_boundary!(F2,V2, Z_level_cut; indCurve = boundary_set_s1[2])
+    return F2, V2
 end 
 
 #FEBio
@@ -362,8 +380,8 @@ function isotropictraction(E,ν,J)
     T = -σₕ*J^(1.0/3.0)
     return T
 end
-#
-function shrinky(exe_path,FF,VV,E,V,CE,Fb,Cb,κ,ratio,J_desired)
+
+function shrinky(exe_path,FF,VV,E,V,CE,Fb,Cb,κ,ratio,J_desired; endCapLabels=[6,7])
     ######
     # Set FEBio exec path or name
     # const FEBIO_EXEC = "febio4" # FEBio executable
@@ -375,9 +393,10 @@ function shrinky(exe_path,FF,VV,E,V,CE,Fb,Cb,κ,ratio,J_desired)
     E_youngs = 9.0*κ*μ/(3.0*κ + μ)
     ν = (3.0*κ - 2.0 *μ)/(2.0*(3.0*κ + μ))
     T0 = isotropictraction(E_youngs,ν,J_desired)
-    #node set bone and top 
-    indNodesTop = unique(reduce(vcat,Fb[Cb.==6]))
-    indNodesBottom = unique(reduce(vcat,Fb[Cb.==7]))
+    
+    # Node sets definitions for end caps and bones 
+    boolFacesEndCaps = [in(c,endCapLabels) for c in Cb]
+    indNodesEndCaps = unique(reduce(vcat,Fb[boolFacesEndCaps]))
     indNodesBones = unique(reduce(vcat,Fb[[in(c,[2,3,4,5]) for c in Cb]]))
 
     ######
@@ -400,10 +419,13 @@ function shrinky(exe_path,FF,VV,E,V,CE,Fb,Cb,κ,ratio,J_desired)
 
     aen(febio_spec_node,"Module"; type = "solid") # Define Module node: <Module type="solid"/>
 
+    time_steps = 10 
+    step_size = 1.0/time_steps
+
     control_node = aen(febio_spec_node,"Control") # Define Control node: <Control>
         aen(control_node,"analysis","STATIC")                
-        aen(control_node,"time_steps",10)
-        aen(control_node,"step_size",0.1)
+        aen(control_node,"time_steps",time_steps)
+        aen(control_node,"step_size",step_size)
         aen(control_node,"plot_zero_state",1)
         aen(control_node,"plot_range",@sprintf("%.2f, %.2f",0,-1))
         aen(control_node,"plot_level","PLOT_MAJOR_ITRS")
@@ -415,7 +437,7 @@ function shrinky(exe_path,FF,VV,E,V,CE,Fb,Cb,κ,ratio,J_desired)
         aen(time_stepper_node,"max_retries",5)
         aen(time_stepper_node,"opt_iter",10)
         aen(time_stepper_node,"dtmin",1e-3)
-        aen(time_stepper_node,"dtmax",0.1)
+        aen(time_stepper_node,"dtmax",step_size)
         aen(time_stepper_node,"aggressiveness",0)
         aen(time_stepper_node,"cutback",5e-1)
         aen(time_stepper_node,"dtforce",0)
@@ -481,17 +503,15 @@ function shrinky(exe_path,FF,VV,E,V,CE,Fb,Cb,κ,ratio,J_desired)
     # Elements
     Elements_node = aen(Mesh_node,"Elements"; name="Part1", type="tet4")
         for (i,e) in enumerate(E)        
-            aen(Elements_node,"elem", join(e,','); id = i)
+            aen(Elements_node,"elem", join([@sprintf("%i",i) for i ∈ e],','); id = i)
             # aen(Elements_node,"elem",join(map(string, e), ','); id = i)
         end
         
     # Node sets
     bcSupportList = "bcSupportList"
     bcSupportList_z = "bcSupportList_z"
-    bcSupportList_z_b = "bcSupportList_z_b"
-    aen(Mesh_node,"NodeSet",join([@sprintf("%i",x) for x ∈ indNodesBones],','); name=bcSupportList)
-    aen(Mesh_node,"NodeSet",join([@sprintf("%i",x) for x ∈ indNodesTop],','); name=bcSupportList_z)
-    aen(Mesh_node,"NodeSet",join([@sprintf("%i",x) for x ∈ indNodesBottom],','); name=bcSupportList_z_b)
+    aen(Mesh_node,"NodeSet",join([@sprintf("%i", i) for i ∈ indNodesBones],','); name=bcSupportList)
+    aen(Mesh_node,"NodeSet",join([@sprintf("%i", i) for i ∈ indNodesEndCaps],','); name=bcSupportList_z)
 
     MeshDomains_node = aen(febio_spec_node, "MeshDomains")
         aen(MeshDomains_node,"SolidDomain"; mat = "Material1", name="Part1")
@@ -507,13 +527,6 @@ function shrinky(exe_path,FF,VV,E,V,CE,Fb,Cb,κ,ratio,J_desired)
         aen(bc_node,"x_dof",0)
         aen(bc_node,"y_dof",0)
         aen(bc_node,"z_dof",1)
-
-    bc_node = aen(Boundary_node,"bc"; name="zero_displacement_z", node_set=bcSupportList_z_b, type="zero displacement")
-        aen(bc_node,"x_dof",0)
-        aen(bc_node,"y_dof",0)
-        aen(bc_node,"z_dof",1)
-
-
         
     LoadData_node = aen(febio_spec_node,"LoadData")
 
@@ -537,7 +550,7 @@ function shrinky(exe_path,FF,VV,E,V,CE,Fb,Cb,κ,ratio,J_desired)
     logfile_node = aen(Output_node,"logfile"; file=filename_log)
         aen(logfile_node,"node_data"; data="ux;uy;uz", delim=",", file=filename_disp)
         aen(logfile_node,"element_data"; data="s1;s2;s3", delim=",", file=filename_stress)
-        aen(logfile_node,"element_data"; data="J", delim=",", file=filename_J)
+        aen(logfile_node,"element_data", join([@sprintf("%i",i) for i ∈ 1:length(E)], ", "); data="J", delim=",", file=filename_J)
 
     #######
     # Write FEB file
@@ -559,12 +572,14 @@ function shrinky(exe_path,FF,VV,E,V,CE,Fb,Cb,κ,ratio,J_desired)
     # Create time varying vectors
     UT = fill(V,numInc) 
     VT = fill(V,numInc)
+    J_E = fill(zeros(length(E)),numInc)
     UT_mag = fill(zeros(length(V)),numInc)
     ut_mag_max = zeros(numInc)
     @inbounds for i in 0:1:numInc-1    
         UT[i+1] = [Point{3,Float64}(u) for u in DD_disp[i].data]
         VT[i+1] += UT[i+1]
         UT_mag[i+1] = norm.(UT[i+1])
+        J_E[i+1] = [J[1] for J in DD_J[i].data]
         ut_mag_max[i+1] = maximum(UT_mag[i+1]) 
     end
 
@@ -584,5 +599,6 @@ function shrinky(exe_path,FF,VV,E,V,CE,Fb,Cb,κ,ratio,J_desired)
     U_mag = U_mag[indUsed]
     # U_vec = U_vec[indNodesSkin]    
     F_shrunk,V_shrunk = remove_unused_vertices(Fb[Cb.==1],VT[end])
-    return UT,VT,FF,VV,F_shrunk,V_shrunk,U_mag,U_vec
+
+    return UT,VT,FF,VV,F_shrunk,V_shrunk,U_mag,U_vec, J_E, DD_J
 end 

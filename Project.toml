@@ -15,7 +15,7 @@ FEBio = {url = "https://github.com/febiosoftware/FEBio.jl.git"}
 Geogram = {url = "https://github.com/COMODO-research/Geogram.jl.git"}
 
 [compat]
-Comodo = "1.0.1"
+Comodo = "1.0.3"
 FEBio = "0.1.0"
 FileIO = "1.17.0"
 Geogram = "0.1.0"
