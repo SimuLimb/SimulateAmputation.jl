@@ -1,8 +1,8 @@
-using Severus
-using Severus.Comodo
-using Severus.Comodo.GeometryBasics
-using Severus.Comodo.GLMakie
-using Severus.Comodo.LinearAlgebra
+using SimulateAmputation
+using SimulateAmputation.Comodo
+using SimulateAmputation.Comodo.GeometryBasics
+using SimulateAmputation.Comodo.GLMakie
+using SimulateAmputation.Comodo.LinearAlgebra
 using FEBio
 using FEBio.XML
 using Printf 
@@ -126,26 +126,26 @@ Constants_node = aen(Globals_node,"Constants")
 
 Material_node = aen(febio_spec_node,"Material")
 
-material_node = aen(Material_node,"material"; id = 1, name="Material1", type="solid mixture")    
+material_node = aen(Material_node,"material"; id = "1", name="Material1", type="solid mixture")    
         solid_node = aen(material_node,"solid"; type="neo-Hookean")                    
                         aen(solid_node,"E",E_youngs)
                         aen(solid_node,"v",ν)
 
         solid_node = aen(material_node,"solid"; type="prescribed isotropic active contraction")
-                        aen(solid_node,"T0",@sprintf("%.16e",T0); lc=1)
+                        aen(solid_node,"T0",@sprintf("%.16e",T0); lc="1")
                         
 Mesh_node = aen(febio_spec_node,"Mesh")
 
 # Nodes
 Nodes_node = aen(Mesh_node,"Nodes"; name="nodeSet_all")
     for (i,v) in enumerate(V)        
-        aen(Nodes_node,"node", join([@sprintf("%.16e",x) for x ∈ v],", "); id = i)     
+        aen(Nodes_node,"node", join([@sprintf("%.16e",x) for x ∈ v],", "); id = @sprintf("%i",i))     
     end
     
 # Elements
 Elements_node = aen(Mesh_node,"Elements"; name="Part1", type="tet4")
     for (i,e) in enumerate(E)        
-        aen(Elements_node,"elem", join([@sprintf("%i",i) for i ∈ e], ", "); id = i)
+        aen(Elements_node,"elem", join([@sprintf("%i",i) for i ∈ e], ", "); id = @sprintf("%i",i))
     end
     
 # Node sets

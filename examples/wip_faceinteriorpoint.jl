@@ -1,11 +1,11 @@
-using Severus.Comodo
-using Severus.Comodo.GLMakie
-using Severus.Comodo.GeometryBasics
-using Severus.Comodo.GLMakie.Colors
+using SimulateAmputation.Comodo
+using SimulateAmputation.Comodo.GLMakie
+using SimulateAmputation.Comodo.GeometryBasics
+using SimulateAmputation.Comodo.GLMakie.Colors
 using FileIO
 
-using Severus.Comodo.Statistics
-using Severus.Comodo.LinearAlgebra
+using SimulateAmputation.Comodo.Statistics
+using SimulateAmputation.Comodo.LinearAlgebra
 
 GLMakie.closeall()
 

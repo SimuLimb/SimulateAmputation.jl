@@ -1,14 +1,14 @@
-using Severus
-using Severus.Comodo
-using Severus.Comodo.GeometryBasics
-using Severus.Comodo.GLMakie
-using Severus.Comodo.LinearAlgebra
-using Severus.Comodo.Statistics
-using Severus.Comodo.Rotations
-using Severus.FEBio
-using Severus.FEBio.XML
-using Severus.Printf 
-using Severus.Geogram
+using SimulateAmputation
+using SimulateAmputation.Comodo
+using SimulateAmputation.Comodo.GeometryBasics
+using SimulateAmputation.Comodo.GLMakie
+using SimulateAmputation.Comodo.LinearAlgebra
+using SimulateAmputation.Comodo.Statistics
+using SimulateAmputation.Comodo.Rotations
+using SimulateAmputation.FEBio
+using SimulateAmputation.FEBio.XML
+using SimulateAmputation.Printf 
+using SimulateAmputation.Geogram
 using FileIO
 
 GLMakie.closeall()
@@ -16,14 +16,14 @@ GLMakie.closeall()
 # Control parameters 
 testCase = 2
 if testCase == 1
-    pathInputGeom = joinpath(severusdir(),"assets","stl")
+    pathInputGeom = joinpath(SimulateAmputationdir(),"assets","stl")
     fileName_set = ("FMA7163_right_leg_isolated_remesh_25k.stl", # Skin
     "FMA24474.stl", # Right femur
     "FMA24486.stl", # Right patella
     "FMA24477.stl", # Right tibia
     "FMA24480.stl") # Right fibula
 elseif testCase == 2
-    pathInputGeom = joinpath(severusdir(),"assets","stl","VHF")
+    pathInputGeom = joinpath(SimulateAmputationdir(),"assets","stl","VHF")
     fileName_set = ("VHF_right_skin_leg_5p0_mm.obj", # Skin
     "VHF_right_femur.obj", # Right femur
     "VHF_right_patella.obj", # Right patella
@@ -425,7 +425,7 @@ on(hSlider7.value) do v2
 end
 
 h_button_save = Button(fig[3,:][1, 1], label = "Save")
-save_path = pathInputGeom = joinpath(severusdir(),"assets","obj")
+save_path = pathInputGeom = joinpath(SimulateAmputationdir(),"assets","obj")
 h_textBox_save = Textbox(fig[3, :][1, 2], placeholder = save_path)
 
 on(h_button_save.clicks) do n

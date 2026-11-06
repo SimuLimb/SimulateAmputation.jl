@@ -1,11 +1,11 @@
-using Severus
-using Severus.Comodo
-using Severus.Comodo.GLMakie
-using Severus.Comodo.GeometryBasics
+using SimulateAmputation
+using SimulateAmputation.Comodo
+using SimulateAmputation.Comodo.GLMakie
+using SimulateAmputation.Comodo.GeometryBasics
 
-using Severus.Comodo.Statistics
-using Severus.Comodo.LinearAlgebra
-using Severus.Geogram
+using SimulateAmputation.Comodo.Statistics
+using SimulateAmputation.Comodo.LinearAlgebra
+using SimulateAmputation.Geogram
 using FileIO
 
 GLMakie.closeall()
@@ -26,7 +26,7 @@ Z_thickness_distal = 20
 # Z_taper_offset = 80
 
 pointSpacing = 4.0 
-pathInputGeom = joinpath(severusdir(),"assets","stl")
+pathInputGeom = joinpath(SimulateAmputationdir(),"assets","stl")
 fileName_set = ("FMA7163_right_leg_isolated_remesh_25k.stl",
 "FMA24474.stl",
 "FMA24486.stl",

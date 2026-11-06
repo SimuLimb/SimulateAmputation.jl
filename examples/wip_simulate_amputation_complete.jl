@@ -1,12 +1,12 @@
-using Severus
-using Severus.Comodo
-using Severus.Comodo.GeometryBasics
-using Severus.Comodo.GLMakie
-using Severus.Comodo.LinearAlgebra
-using Severus.Comodo.Statistics
-using Severus.FEBio
-using Severus.FEBio.XML
-using Severus.Printf 
+using SimulateAmputation
+using SimulateAmputation.Comodo
+using SimulateAmputation.Comodo.GeometryBasics
+using SimulateAmputation.Comodo.GLMakie
+using SimulateAmputation.Comodo.LinearAlgebra
+using SimulateAmputation.Comodo.Statistics
+using SimulateAmputation.FEBio
+using SimulateAmputation.FEBio.XML
+using SimulateAmputation.Printf 
 using FileIO
 
 GLMakie.closeall()
@@ -14,14 +14,14 @@ GLMakie.closeall()
 # Control parameters 
 testCase = 2
 if testCase == 1
-    pathInputGeom = joinpath(severusdir(),"assets","stl")
+    pathInputGeom = joinpath(SimulateAmputationdir(),"assets","stl")
     fileName_set = ("FMA7163_right_leg_isolated_remesh_25k.stl", # Skin
     "FMA24474.stl", # Right femur
     "FMA24486.stl", # Right patella
     "FMA24477.stl", # Right tibia
     "FMA24480.stl") # Right fibula
 elseif testCase == 2
-    pathInputGeom = joinpath(severusdir(),"assets","stl","VHF")
+    pathInputGeom = joinpath(SimulateAmputationdir(),"assets","stl","VHF")
     fileName_set = ("VHF_right_skin_leg_5p0_mm.obj", # Skin
     "VHF_right_femur.obj", # Right femur
     "VHF_right_patella.obj", # Right patella

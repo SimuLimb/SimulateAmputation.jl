@@ -1,12 +1,12 @@
-using Severus
-using Severus.Comodo
-using Severus.Comodo.GeometryBasics
-using Severus.Comodo.GLMakie
-using Severus.Comodo.LinearAlgebra
-using Severus.Comodo.Statistics
-using Severus.FEBio
-using Severus.FEBio.XML
-using Severus.Printf 
+using SimulateAmputation
+using SimulateAmputation.Comodo
+using SimulateAmputation.Comodo.GeometryBasics
+using SimulateAmputation.Comodo.GLMakie
+using SimulateAmputation.Comodo.LinearAlgebra
+using SimulateAmputation.Comodo.Statistics
+using SimulateAmputation.FEBio
+using SimulateAmputation.FEBio.XML
+using SimulateAmputation.Printf 
 
 
 #Full leg 
@@ -14,7 +14,7 @@ Z_cut_offset_top = 200.0
 Z_cut_offset_bottom = 250.0
 
 pointSpacing = 5.0 
-pathInputGeom = joinpath(severusdir(),"assets","stl")
+pathInputGeom = joinpath(SimulateAmputationdir(),"assets","stl")
 
 fileName_set = ("FMA7163_right_leg_isolated_remesh_25k.stl", # Skin
 "FMA24474.stl", # Right femur
