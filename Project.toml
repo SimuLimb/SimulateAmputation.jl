@@ -1,7 +1,7 @@
-name = "Severus"
-uuid = "dfc6c722-4af6-47a0-a997-48b85eeeb58b"
-authors = ["chethana-rao <chethanaprao@alumni.iitm.ac.in>"]
+name = "SimulateAmputation"
+uuid = "e8b0ab7e-6308-41e2-bad8-9a8f19e6fa0a"
 version = "0.1.0"
+authors = ["Kevin-Mattheus-Moerman <kevin.moerman@gmail.com>"]
 
 [deps]
 Comodo = "59095408-2761-4f7a-bdc2-044e78630271"
@@ -15,7 +15,7 @@ FEBio = {url = "https://github.com/febiosoftware/FEBio.jl.git"}
 Geogram = {url = "https://github.com/COMODO-research/Geogram.jl.git"}
 
 [compat]
-Comodo = "1.0.3"
+Comodo = "1.0.1"
 FEBio = "0.1.0"
 FileIO = "1.17.0"
 Geogram = "0.1.0"

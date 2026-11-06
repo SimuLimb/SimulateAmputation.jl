@@ -83,7 +83,7 @@ VV_ori = deepcopy(VV)
 #top surface cut it, ssnap it to the top, ggremeh it
 v_mid_patella = mean(VV[indPatella])
 
-p = [v_mid_patella[1],v_mid_patella[2],v_mid_patella[3]+Z_cut_offset_top] # Point on cutting plane
+p = Point{3, Float64}(v_mid_patella[1],v_mid_patella[2],v_mid_patella[3]+Z_cut_offset_top) # Point on cutting plane
 
 for modelName in nameSetCut_top
     indexNow = findall(nameSet.==modelName)[1]
@@ -185,7 +185,8 @@ F_femur = FF[indFemur]
 boundary_set_skin, z_level_skin = getboundaryset(F_skin,V_skin)
 boundary_set_femur, z_level_femur = getboundaryset(F_femur,V_femur)
 
-VT = (reverse(V_skin[boundary_set_skin[1]]),reverse(V_femur[boundary_set_femur[1]]),) # Curves
+VT = (V_skin[boundary_set_skin[1]], V_femur[boundary_set_femur[1]]) # Curves
+
 R = ([1,2],) 
 # R_femur = ([2],) 
 P = (pointSpacing,pointSpacing)  # Point spacings

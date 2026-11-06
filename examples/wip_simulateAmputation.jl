@@ -73,7 +73,7 @@ VV_ori = deepcopy(VV)
 # Cutting surfaces 
 v_mid_patella = mean(VV[indPatella])
 
-p = [v_mid_patella[1],v_mid_patella[2],v_mid_patella[3]+Z_cut_offset_top] # Point on cutting plane
+p = Point{3, Float64}(v_mid_patella[1],v_mid_patella[2],v_mid_patella[3]+Z_cut_offset_top) # Point on cutting plane
 
 for modelName in nameSetCut_top
     indexNow = findall(nameSet.==modelName)[1]
@@ -87,12 +87,12 @@ Fn,Vn,_ = trisurfslice(FF[indSkin],VV[indSkin],n,p; output_type=:above, snapTole
 FF[indSkin] = Fn
 VV[indSkin] = Vn
 
-p = [v_mid_patella[1],v_mid_patella[2],v_mid_patella[3]-Z_cut_level_tibia] # Point on cutting plane
+p = Point{3,Float64}(v_mid_patella[1],v_mid_patella[2],v_mid_patella[3]-Z_cut_level_tibia) # Point on cutting plane
 Fn,Vn,_ = trisurfslice(FF[indTibia],VV[indTibia],n,p; output_type=:above, snapTolerance = snapTolerance) 
 FF[indTibia] = Fn
 VV[indTibia] = Vn
 
-p = [v_mid_patella[1],v_mid_patella[2],v_mid_patella[3]-Z_cut_level_fibula] # Point on cutting plane
+p = Point{3,Float64}(v_mid_patella[1],v_mid_patella[2],v_mid_patella[3]-Z_cut_level_fibula) # Point on cutting plane
 Fn,Vn,_ = trisurfslice(FF[indFibula],VV[indFibula],n,p; output_type=:above, snapTolerance = snapTolerance) 
 FF[indFibula] = Fn
 VV[indFibula] = Vn
