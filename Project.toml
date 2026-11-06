@@ -1,6 +1,6 @@
-name = "Severus"
+name = "SimulateAmputation"
 uuid = "dfc6c722-4af6-47a0-a997-48b85eeeb58b"
-authors = ["chethana-rao <chethanaprao@alumni.iitm.ac.in>"]
+authors = ["Kevin-Mattheus-Moerman <kevin.moerman@gmail.com>"]
 version = "0.1.0"
 
 [deps]
