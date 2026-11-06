@@ -7,7 +7,7 @@
 Since Severus is not registred as a package yet, the following is needed to add Severus to your Julia environment: 
 ```julia
 julia> ]
-(@v1.xx) pkg> add https://github.com/SimuLimb/Severus.jl
+(@v1.xx) pkg> add https://github.com/SimuLimb/SimulateAmputation.jl
 ```
 
 # Getting started
