@@ -21,8 +21,11 @@ export FEBio
 export Printf
 
 # Export functions
-export SimulateAmputationdir, importGeometry, smoothboundary, taperfunction, bezierclose, set_z_level_boundary!, getboundaryset, cutEnds!,cut_bones, close_top_bottom,volume_tet_ideal
+export SimulateAmputationdir, importGeometry, smoothboundary, taperfunction
+export bezierclose, set_z_level_boundary!, getboundaryset, cutEnds!,cut_bones
+export close_top_bottom, volume_tet_ideal
 export mapfunction_D, bezierMap, map_D,new_shape_residuum
-export isotropictraction,shrinky
+export isotropictraction, traction_shrink
 export close_bones_bezier
+export mapskin, par2shape
 end # module Severus

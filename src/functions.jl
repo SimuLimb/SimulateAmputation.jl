@@ -269,6 +269,7 @@ function cutEnds!(FF, VV, zCut_levels,n;snapTolerance,pointSpacing)
         
     end
 end
+
 #### alternative cut_bones
 function cut_bones(FF,VV,nameSet,nameSetCut_down,Z_cut_offset_down,v_mid_patella,n;output_type,snapTolerance)
     for model in eachindex(nameSetCut_down)
@@ -322,6 +323,7 @@ function volume_tet_ideal(F,V)
         vol = mean(D)^3 / (6.0*sqrt(2.0))
     return vol
 end 
+
 #mapping functions 
 function mapfunction_D(V_skin,Z_taper_start,Z_taper_end)
     w = Z_taper_start-Z_taper_end
@@ -344,6 +346,7 @@ function bezierMap(t,t_map; n=100)
     T_map_bez = [p[2] for p in V]
     return T_bez, T_map_bez
 end
+
 # map it to the skin 
 function map_D(T,T_map, D; spline_order=4)                                 
     S = BSplineKit.interpolate(T, T_map, BSplineOrder(spline_order)) # Create interpolator
@@ -381,26 +384,24 @@ function isotropictraction(E,ν,J)
     return T
 end
 
-function shrinky(exe_path,FF,VV,E,V,CE,Fb,Cb,κ,ratio,J_desired; endCapLabels=[6,7])
-    ######
-    # Set FEBio exec path or name
-    # const FEBIO_EXEC = "febio4" # FEBio executable
-     FEBIO_EXEC = exe_path # Path to FEBio executable
+function traction_shrink(exe_path, FF, VV, E, V, CE, Fb, Cb, κ, κ_ratio, J_desired; endCapLabels=[6,7])
+    # Path to FEBio executable
+    FEBIO_EXEC = exe_path 
 
-    ###### 
-    # Control parameters 
-    μ = κ/ratio 
+    # Material parameters relative to bulk modulus ratio 
+    μ = κ/κ_ratio 
     E_youngs = 9.0*κ*μ/(3.0*κ + μ)
     ν = (3.0*κ - 2.0 *μ)/(2.0*(3.0*κ + μ))
-    T0 = isotropictraction(E_youngs,ν,J_desired)
+
+    # Determine traction magnitude 
+    T0 = isotropictraction(E_youngs, ν, J_desired)
     
     # Node sets definitions for end caps and bones 
     boolFacesEndCaps = [in(c,endCapLabels) for c in Cb]
     indNodesEndCaps = unique(reduce(vcat,Fb[boolFacesEndCaps]))
     indNodesBones = unique(reduce(vcat,Fb[[in(c,[2,3,4,5]) for c in Cb]]))
 
-    ######
-    # Define file names
+    # Define file names for FEBio simulation 
     saveDir = joinpath(febiojl_dir(),"assets","temp") # Main directory to save FEBio input and output files
     if !isdir(saveDir)
         mkdir(saveDir)      
@@ -413,7 +414,6 @@ function shrinky(exe_path,FF,VV,E,V,CE,Fb,Cb,κ,ratio,J_desired; endCapLabels=[6
     filename_stress = "febioInputFile_01_STRESS.txt"
     filename_J = "febioInputFile_01_J.txt"
 
-    ######
     # Define febio input file XML
     doc,febio_spec_node = feb_doc_initialize()
 
@@ -552,15 +552,11 @@ function shrinky(exe_path,FF,VV,E,V,CE,Fb,Cb,κ,ratio,J_desired; endCapLabels=[6
         aen(logfile_node,"element_data"; data="s1;s2;s3", delim=",", file=filename_stress)
         aen(logfile_node,"element_data", join([@sprintf("%i",i) for i ∈ 1:length(E)], ", "); data="J", delim=",", file=filename_J)
 
-    #######
-    # Write FEB file
-    XML.write(filename_FEB, doc)
-
-    #######
+    XML.write(filename_FEB, doc) # Write FEB file
+    
     # Run FEBio
     run_febio(filename_FEB,FEBIO_EXEC)
-
-    #######
+    
     # Import results
     DD_disp = read_logfile(joinpath(saveDir,filename_disp))
     DD_stress = read_logfile(joinpath(saveDir,filename_stress))
@@ -600,5 +596,5 @@ function shrinky(exe_path,FF,VV,E,V,CE,Fb,Cb,κ,ratio,J_desired; endCapLabels=[6
     # U_vec = U_vec[indNodesSkin]    
     F_shrunk,V_shrunk = remove_unused_vertices(Fb[Cb.==1],VT[end])
 
-    return UT,VT,FF,VV,F_shrunk,V_shrunk,U_mag,U_vec, J_E, DD_J
+    return UT, VT, FF, VV, F_shrunk, V_shrunk, U_mag, U_vec, J_E, DD_J
 end 
