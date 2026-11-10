@@ -8,6 +8,11 @@
 ## About 
 `SimulateAmputation` is a [Julia](https://julialang.org/) package for the creation of simulated geometries for lower limb amputation. Current demos feature only transtibual amputation. 
 
+<div>
+    <img src="assets/img/surface_meshes.jpg" width="50%">
+    <img src="assets/img/par.gif" width="50%">
+</div>
+
 ## Installation
 Since SimulateAmputation is not registred as a package yet, and since it depends on FEBio.jl and Geogram.jl (which are also unregistred) the following is recommended to start using SimulateAmputation: 
 
