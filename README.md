@@ -1,9 +1,14 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache-blue.svg)](https://github.com/SimuLimb/SimulateAmputation.jl/blob/main/LICENSE)
+# SimulateAmputation.jl
 
-# About SimulateAmputation.jl
-`SimulateAmputation` is a [Julia](https://julialang.org/) package 
+<div>
+    <img src="assets/img/simulateAmputation_framework.jpg" width="75%">
+</div>
 
-# Installation
+## About 
+`SimulateAmputation` is a [Julia](https://julialang.org/) package for the creation of simulated geometries for lower limb amputation. Current demos feature only transtibual amputation. 
+
+## Installation
 Since SimulateAmputation is not registred as a package yet, and since it depends on FEBio.jl and Geogram.jl (which are also unregistred) the following is recommended to start using SimulateAmputation: 
 
 1. Create a new folder to define a new environment e.g. `dev_SimulateAmputation`
@@ -29,13 +34,13 @@ dev --local Comodo
 ```
 8. Next activate the new folder as an environment in your IDE. For VS Code or VS Codium you can simply open the `dev_SimulateAmputation` to activate this environment.
 
-# Getting started
+## Getting started
 To get started install the package, study the documentation, and test some of the demos provided in the [`examples`](https://github.com/SimuLimb/SimulateAmputation.jl/tree/main/examples) folder. 
 
-# Documentation 
+## Documentation 
 Documentation is under construction. 
 
-## BodyParts3D file names explained
+### BodyParts3D file names explained
 | `FMAID`      | `English name` |
 | ----------- | ----------- |
 | 7163   | Skin      |
@@ -47,17 +52,17 @@ Documentation is under construction.
 | 24480   | Right fibula       |
 | 24480   | Right fibula       |
 
-# Testing 
+## Testing 
 
-# Roadmap
+## Roadmap
 - [ ] Create more examples/demos and for each function
 - [x] Create demo featuring parameterised shape changes
 - [x] Make repository and REAME feature complete
 - [ ] Add testing/CI
 - [ ] Add more detailed documentation for functions 
 
-# How to contribute? 
+## How to contribute? 
 Your help would be greatly appreciated! If you can contribute please do so by posting a pull-request. I am very much open to fully acknowledging your contributions e.g. by listing you as a contributor properly whereever possible, by welcoming you on board as a long term contributor, or by inviting you to be a co-author on publications featuring SimulateAmputation functionality. 
 
-# License 
+## License 
 SimulateAmputation.jl is released open source under the [Apache 2.0 license](https://github.com/SimuLimb/SimulateAmputation.jl/blob/main/LICENSE).
