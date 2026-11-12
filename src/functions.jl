@@ -370,6 +370,43 @@ function new_shape_residuum(V_skin,F_skin,D_map,U_vec, v_mid_patella, Z_level_cu
     return F2, V2
 end 
 
+
+function mapskin(Tx, Ty, Tx_skin, U_vec, v1,v2, v_mid_low_tibia, Z_cut_level_skin; numPointBezier = 250, Z_thickness_distal=30, remesh=false)
+    A_map = map_D(Tx, Ty, Tx_skin; spline_order=4)
+    Fs,Vs = new_shape_residuum(V_skin, F_skin, A_map, U_vec, v_mid_patella, Z_cut_level_skin)
+
+    # Close residuum skin
+    boundary_set_s1,_ = getboundaryset(Fs,Vs)
+    # p_distal = Point{3,Float64}(v_mid_low_tibia[1],v_mid_low_tibia[2],v_mid_low_tibia[3]-Z_thickness_distal)
+    p_distal = mean(Vs[boundary_set_s1[2]])
+    p_distal = Point{3,Float64}(p_distal[1], p_distal[2], v_mid_low_tibia[3]-Z_thickness_distal)
+
+    zMax = maximum([v[3] for v in Vs])
+
+    d = [sqrt((Vs[i][1]-v_mid_low_tibia[1])^2.0 + (Vs[i][2]-v_mid_low_tibia[2])^2.0) for i in boundary_set_s1[2]]
+    d ./= maximum(d)
+    
+    v1_map = v1
+    v2_map = v2
+
+    Fs2,Vs2 = bezierclose(Fs, Vs, v1_map, v2_map, boundary_set_s1[2]; numPointBezier = numPointBezier, p_distal=p_distal, numEdgeSmoothSteps = 25, λ = 0.5, pointSpacing=pointSpacing, remesh=remesh)
+    edgeSet = boundaryedges(Fs2)
+    indicesCurve = edges2curve(edgeSet; remove_last = true)
+    for i in indicesCurve
+        Vs2[i] = Point{3,Float64}(Vs2[i][1],Vs2[i][2],zMax)
+    end        
+    return Fs2, Vs2
+end
+
+function par2shape(r1, a1, r2, a2, v1, v2, h2, D_lin, U_vec, Z_thickness_distal, Z_cut_level_skin; remesh=false)
+    Tx_bez_in     = [0.0, r1*cosd(a1), 1.0 + r2*cosd(a2), 1.0]
+    Ty_bez_in = [0.0, r1*sind(a1), h2 + r2*sind(a2), h2]
+    Tx_bez, Ty_bez = bezierMap(Tx_bez_in, Ty_bez_in; n=200)
+    F_bez, V_bez = mapskin(Tx_bez, Ty_bez, D_lin, U_vec, v1, v2, v_mid_low_tibia, Z_cut_level_skin; numPointBezier = numPointBezier, Z_thickness_distal = Z_thickness_distal, remesh=remesh)
+    return F_bez, V_bez, Tx_bez_in, Ty_bez_in, Tx_bez, Ty_bez
+end
+
+
 #FEBio
 function isotropictraction(E,ν,J)
     # Lamé parameters
